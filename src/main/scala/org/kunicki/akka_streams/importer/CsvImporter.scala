@@ -48,4 +48,13 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository) extends 
         .map(_.utf8String)
         .mapAsync(parallelism = nonIOParallelism)(parseLine(file.getPath))
     }
+
+  val computeAverage: Flow[Reading, ValidReading, NotUsed] =
+    Flow[Reading].grouped(2).mapAsyncUnordered(parallelism = nonIOParallelism) { readings =>
+      Future {
+        val validReadings = readings.collect { case r: ValidReading => r }
+        val average = if (validReadings.nonEmpty) validReadings.map(_.value).sum / validReadings.size else -1
+        ValidReading(readings.head.id, average)
+      }
+    }
 }
