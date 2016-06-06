@@ -6,7 +6,8 @@ import java.util.zip.GZIPInputStream
 
 import akka.NotUsed
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Flow, Framing, StreamConverters}
+import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.{Flow, Framing, Sink, Source, StreamConverters}
 import akka.util.ByteString
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
@@ -71,4 +72,22 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
         case Failure(e) => logger.error(s"Unable to save $reading: ${e.getMessage}")
       }
     }
+
+  implicit val materializer = ActorMaterializer()
+
+  def importSingleFile(file: File) = {
+    val graph = Source.single(file)
+      .via(parseFile)
+      .via(computeAverage)
+      .via(storeReadings)
+
+    logger.info(s"Starting import of ${file.getPath}")
+
+    graph
+      .runWith(Sink.ignore)
+      .andThen {
+        case Success(_) => logger.info(s"Successfully imported ${file.getPath}")
+        case Failure(e) => logger.error(s"Failed to import ${file.getPath}")
+      }
+  }
 }
