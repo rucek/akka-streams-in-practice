@@ -1,9 +1,11 @@
 package org.kunicki.akka_streams.importer
 
+import java.io.{File, FileInputStream}
 import java.nio.file.Paths
+import java.util.zip.GZIPInputStream
 
 import akka.NotUsed
-import akka.stream.scaladsl.{Flow, Framing}
+import akka.stream.scaladsl.{Flow, Framing, StreamConverters}
 import akka.util.ByteString
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
@@ -35,4 +37,15 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository) extends 
 
   val lineDelimiter: Flow[ByteString, ByteString, NotUsed] =
     Framing.delimiter(ByteString("\n"), 128, allowTruncation = true)
+
+  val parseFile: Flow[File, Reading, NotUsed] =
+    Flow[File].flatMapConcat { file =>
+      val gzipInputStream = new GZIPInputStream(new FileInputStream(file))
+
+      StreamConverters.fromInputStream(() => gzipInputStream)
+        .via(lineDelimiter)
+        .drop(linesToSkip)
+        .map(_.utf8String)
+        .mapAsync(parallelism = nonIOParallelism)(parseLine(file.getPath))
+    }
 }
