@@ -90,4 +90,20 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
         case Failure(e) => logger.error(s"Failed to import ${file.getPath}")
       }
   }
+
+  def importFromFiles = {
+    val files = importDirectory.listFiles.toList
+    logger.info(s"Starting import of ${files.size} files from ${importDirectory.getPath}")
+
+    val startTime = System.currentTimeMillis()
+
+    Source(files).mapAsyncUnordered(concurrentFiles)(importSingleFile)
+      .runWith(Sink.ignore)
+      .andThen {
+        case Success(_) =>
+          val elapsedTime = (System.currentTimeMillis() - startTime) / 1000.0
+          logger.info(s"Import finished in ${elapsedTime}s")
+        case Failure(e) => logger.error("Import failed", e)
+      }
+  }
 }
