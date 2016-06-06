@@ -2,6 +2,9 @@ package org.kunicki.akka_streams.importer
 
 import java.nio.file.Paths
 
+import akka.NotUsed
+import akka.stream.scaladsl.{Flow, Framing}
+import akka.util.ByteString
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import org.kunicki.akka_streams.model.{InvalidReading, Reading, ValidReading}
@@ -29,4 +32,7 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository) extends 
         InvalidReading(id)
     }
   }
+
+  val lineDelimiter: Flow[ByteString, ByteString, NotUsed] =
+    Framing.delimiter(ByteString("\n"), 128, allowTruncation = true)
 }
