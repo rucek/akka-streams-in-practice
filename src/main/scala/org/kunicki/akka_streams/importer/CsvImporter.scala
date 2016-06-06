@@ -5,16 +5,22 @@ import java.nio.file.Paths
 import java.util.zip.GZIPInputStream
 
 import akka.NotUsed
+import akka.actor.ActorSystem
 import akka.stream.scaladsl.{Flow, Framing, StreamConverters}
 import akka.util.ByteString
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
+import com.websudos.phantom.dsl.ResultSet
 import org.kunicki.akka_streams.model.{InvalidReading, Reading, ValidReading}
 import org.kunicki.akka_streams.repository.ReadingRepository
 
 import scala.concurrent.Future
+import scala.util.{Failure, Success}
 
-class CsvImporter(config: Config, readingRepository: ReadingRepository) extends LazyLogging {
+class CsvImporter(config: Config, readingRepository: ReadingRepository)
+                 (implicit system: ActorSystem) extends LazyLogging {
+
+  import system.dispatcher
 
   private val importDirectory = Paths.get(config.getString("importer.import-directory")).toFile
   private val linesToSkip = config.getInt("importer.lines-to-skip")
@@ -55,6 +61,14 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository) extends 
         val validReadings = readings.collect { case r: ValidReading => r }
         val average = if (validReadings.nonEmpty) validReadings.map(_.value).sum / validReadings.size else -1
         ValidReading(readings.head.id, average)
+      }
+    }
+
+  val storeReadings: Flow[ValidReading, ResultSet, NotUsed] =
+    Flow[ValidReading].mapAsyncUnordered(parallelism = concurrentWrites) { reading =>
+      readingRepository.save(reading).andThen {
+        case Success(_) => logger.info(s"Saved $reading")
+        case Failure(e) => logger.error(s"Unable to save $reading: ${e.getMessage}")
       }
     }
 }
