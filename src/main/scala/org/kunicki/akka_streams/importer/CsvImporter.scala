@@ -6,11 +6,11 @@ import java.util.zip.GZIPInputStream
 
 import akka.NotUsed
 import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
+import akka.stream.{ActorAttributes, ActorMaterializer, Supervision}
 import akka.stream.scaladsl.{Flow, Framing, Sink, Source, StreamConverters}
 import akka.util.ByteString
 import com.typesafe.config.Config
-import com.typesafe.scalalogging.LazyLogging
+import com.typesafe.scalalogging.{LazyLogging, Logger}
 import com.websudos.phantom.dsl.ResultSet
 import org.kunicki.akka_streams.model.{InvalidReading, Reading, ValidReading}
 import org.kunicki.akka_streams.repository.ReadingRepository
@@ -84,6 +84,7 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
     logger.info(s"Starting import of ${file.getPath}")
 
     graph
+      .withAttributes(CsvImporter.resumingLoggingStrategy(logger))
       .runWith(Sink.ignore)
       .andThen {
         case Success(_) => logger.info(s"Successfully imported ${file.getPath}")
@@ -98,6 +99,7 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
     val startTime = System.currentTimeMillis()
 
     Source(files).mapAsyncUnordered(concurrentFiles)(importSingleFile)
+      .withAttributes(CsvImporter.resumingLoggingStrategy(logger))
       .runWith(Sink.ignore)
       .andThen {
         case Success(_) =>
@@ -106,4 +108,16 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
         case Failure(e) => logger.error("Import failed", e)
       }
   }
+}
+
+object CsvImporter {
+
+  private def resumingLoggingDecider(logger: Logger): Supervision.Decider = {
+    case e: Throwable =>
+      logger.error("Exception thrown during stream processing", e)
+      Supervision.Resume
+  }
+
+  def resumingLoggingStrategy(logger: Logger) =
+    ActorAttributes.supervisionStrategy(resumingLoggingDecider(logger))
 }
