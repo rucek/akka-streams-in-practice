@@ -2,7 +2,7 @@
 
 This is a sample Akka Streams project which uses the library to import data from a number of Gzipped CSV files into a Cassandra table.
 
-The CSV files contain som ekind of readings, i.e. `(id, value)` pairs, where every `id` has two associated `value`s and the records for a given `id` appear in subsequent lines in the file. Any of the `value`s may ocassionally be an invalid number. Example:
+The CSV files contain some kind of readings, i.e. `(id, value)` pairs, where every `id` has two associated `value`s and the records for a given `id` appear in subsequent lines in the file. Any of the `value`s may ocassionally be an invalid number. Example:
 
 ```
 93500;0.5287942176336127
