@@ -22,4 +22,7 @@ project/plugins/project/
 .scala_dependencies
 .worksheet
 
+#IntelliJ-IDE specific
+.idea
+
 data

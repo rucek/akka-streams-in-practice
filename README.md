@@ -52,6 +52,11 @@ docker run -d --name cassandra cassandra
 
 and in a while you should have Cassandra ready at port 9042. When the container has started, it's time to create a keyspace and a table for our data.
 
+Depending on the setup that you have you have you might want to bind the container directly to port 9042:
+```bash
+docker run --name cassandra -p 127.0.0.1:9042:9042 -d cassandra
+```
+
 First you need to run the CQL shell:
 
 ```bash
