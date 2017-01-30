@@ -6,8 +6,8 @@ import java.util.zip.GZIPInputStream
 
 import akka.NotUsed
 import akka.actor.ActorSystem
-import akka.stream.{ActorAttributes, ActorMaterializer, Supervision}
-import akka.stream.scaladsl.{Flow, Framing, Sink, Source, StreamConverters}
+import akka.stream.scaladsl.{Balance, Flow, Framing, GraphDSL, Merge, Sink, Source, StreamConverters}
+import akka.stream.{ActorAttributes, ActorMaterializer, FlowShape, Supervision}
 import akka.util.ByteString
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.{LazyLogging, Logger}
@@ -73,32 +73,35 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
       }
     }
 
-  implicit val materializer = ActorMaterializer()
-
-  def importSingleFile(file: File) = {
-    val graph = Source.single(file)
+  val importSingleFile: Flow[File, ResultSet, NotUsed] =
+    Flow[File]
       .via(parseFile)
       .via(computeAverage)
       .via(storeReadings)
 
-    logger.info(s"Starting import of ${file.getPath}")
-
-    graph
-      .withAttributes(CsvImporter.resumingLoggingStrategy(logger))
-      .runWith(Sink.ignore)
-      .andThen {
-        case Success(_) => logger.info(s"Successfully imported ${file.getPath}")
-        case Failure(e) => logger.error(s"Failed to import ${file.getPath}")
-      }
-  }
-
   def importFromFiles = {
+    implicit val materializer = ActorMaterializer()
+
     val files = importDirectory.listFiles.toList
     logger.info(s"Starting import of ${files.size} files from ${importDirectory.getPath}")
 
     val startTime = System.currentTimeMillis()
 
-    Source(files).mapAsyncUnordered(concurrentFiles)(importSingleFile)
+    val balancer = Flow.fromGraph(GraphDSL.create() { implicit builder =>
+      import GraphDSL.Implicits._
+
+      val balancer = builder.add(Balance[File](concurrentFiles))
+      val merge = builder.add(Merge[ResultSet](concurrentFiles))
+
+      (1 to concurrentFiles).foreach { _ =>
+        balancer ~> importSingleFile ~> merge
+      }
+
+      FlowShape(balancer.in, merge.out)
+    })
+
+    Source(files)
+      .via(balancer)
       .withAttributes(CsvImporter.resumingLoggingStrategy(logger))
       .runWith(Sink.ignore)
       .andThen {
