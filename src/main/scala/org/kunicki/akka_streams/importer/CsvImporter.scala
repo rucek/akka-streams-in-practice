@@ -102,7 +102,10 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
 
     Source(files)
       .via(balancer)
-      .withAttributes(CsvImporter.resumingLoggingStrategy(logger))
+      .withAttributes(ActorAttributes.supervisionStrategy { e =>
+        logger.error("Exception thrown during stream processing", e)
+        Supervision.Resume
+      })
       .runWith(Sink.ignore)
       .andThen {
         case Success(_) =>
@@ -111,16 +114,4 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
         case Failure(e) => logger.error("Import failed", e)
       }
   }
-}
-
-object CsvImporter {
-
-  private def resumingLoggingDecider(logger: Logger): Supervision.Decider = {
-    case e: Throwable =>
-      logger.error("Exception thrown during stream processing", e)
-      Supervision.Resume
-  }
-
-  def resumingLoggingStrategy(logger: Logger) =
-    ActorAttributes.supervisionStrategy(resumingLoggingDecider(logger))
 }
