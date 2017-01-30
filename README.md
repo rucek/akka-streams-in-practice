@@ -66,7 +66,7 @@ docker exec -it cassandra cqlsh
 Then, in `cqlsh` you create an `akka_streams` keyspace:
 
 ```cql
-CREATE KEYSPACE akka_streams WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : '1' };
+CREATE KEYSPACE akka_streams WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };
 ```
 
 Finally, let's create the `readings` table:
