@@ -90,14 +90,14 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
     val balancer = Flow.fromGraph(GraphDSL.create() { implicit builder =>
       import GraphDSL.Implicits._
 
-      val balancer = builder.add(Balance[File](concurrentFiles))
+      val balance = builder.add(Balance[File](concurrentFiles))
       val merge = builder.add(Merge[ResultSet](concurrentFiles))
 
       (1 to concurrentFiles).foreach { _ =>
-        balancer ~> importSingleFile ~> merge
+        balance ~> importSingleFile ~> merge
       }
 
-      FlowShape(balancer.in, merge.out)
+      FlowShape(balance.in, merge.out)
     })
 
     Source(files)
