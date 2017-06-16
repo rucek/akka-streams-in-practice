@@ -4,14 +4,13 @@ import java.io.{File, FileInputStream}
 import java.nio.file.Paths
 import java.util.zip.GZIPInputStream
 
-import akka.NotUsed
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Balance, Flow, Framing, GraphDSL, Merge, Sink, Source, StreamConverters}
+import akka.stream.scaladsl.{Balance, Flow, Framing, GraphDSL, Keep, Merge, Sink, Source, StreamConverters}
 import akka.stream.{ActorAttributes, ActorMaterializer, FlowShape, Supervision}
 import akka.util.ByteString
+import akka.{Done, NotUsed}
 import com.typesafe.config.Config
-import com.typesafe.scalalogging.{LazyLogging, Logger}
-import com.websudos.phantom.dsl.ResultSet
+import com.typesafe.scalalogging.LazyLogging
 import org.kunicki.akka_streams.model.{InvalidReading, Reading, ValidReading}
 import org.kunicki.akka_streams.repository.ReadingRepository
 
@@ -65,19 +64,15 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
       }
     }
 
-  val storeReadings: Flow[ValidReading, ResultSet, NotUsed] =
-    Flow[ValidReading].mapAsyncUnordered(parallelism = concurrentWrites) { reading =>
-      readingRepository.save(reading).andThen {
-        case Success(_) => logger.info(s"Saved $reading")
-        case Failure(e) => logger.error(s"Unable to save $reading: ${e.getMessage}")
-      }
-    }
+  val storeReadings: Sink[ValidReading, Future[Done]] =
+    Flow[ValidReading]
+      .mapAsyncUnordered(concurrentWrites)(readingRepository.save)
+      .toMat(Sink.ignore)(Keep.right)
 
-  val importSingleFile: Flow[File, ResultSet, NotUsed] =
+  val processSingleFile: Flow[File, ValidReading, NotUsed] =
     Flow[File]
       .via(parseFile)
       .via(computeAverage)
-      .via(storeReadings)
 
   def importFromFiles = {
     implicit val materializer = ActorMaterializer()
@@ -87,18 +82,18 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
 
     val startTime = System.currentTimeMillis()
 
-    val balancer = Flow.fromGraph(GraphDSL.create() { implicit builder =>
+    val balancer = GraphDSL.create() { implicit builder =>
       import GraphDSL.Implicits._
 
       val balance = builder.add(Balance[File](concurrentFiles))
-      val merge = builder.add(Merge[ResultSet](concurrentFiles))
+      val merge = builder.add(Merge[ValidReading](concurrentFiles))
 
       (1 to concurrentFiles).foreach { _ =>
-        balance ~> importSingleFile ~> merge
+        balance ~> processSingleFile ~> merge
       }
 
       FlowShape(balance.in, merge.out)
-    })
+    }
 
     Source(files)
       .via(balancer)
@@ -106,7 +101,7 @@ class CsvImporter(config: Config, readingRepository: ReadingRepository)
         logger.error("Exception thrown during stream processing", e)
         Supervision.Resume
       })
-      .runWith(Sink.ignore)
+      .runWith(storeReadings)
       .andThen {
         case Success(_) =>
           val elapsedTime = (System.currentTimeMillis() - startTime) / 1000.0
