@@ -1,13 +1,19 @@
 package org.kunicki.akka_streams.repository
+import com.websudos.phantom.Manager
+import com.websudos.phantom.dsl._
 import org.kunicki.akka_streams.model.ValidReading
 
 import scala.concurrent.Future
 
-import com.websudos.phantom.dsl._
-
 class ReadingRepository {
 
   def save(reading: ValidReading): Future[ResultSet] = MyDatabase.readings.store(reading)
+
+  def shuthdown = {
+    Manager.shutdown()
+    MyDatabase.session.getCluster.close()
+    MyDatabase.session.close()
+  }
 }
 
 object Defaults {

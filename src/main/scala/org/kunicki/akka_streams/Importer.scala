@@ -12,7 +12,12 @@ object Importer extends App {
 
   private val config = ConfigFactory.load()
   private val readingRepository = new ReadingRepository
-  private val csvImporter = new CsvImporter(config, readingRepository)
 
-  csvImporter.importFromFiles
+  import system.dispatcher
+
+  new CsvImporter(config, readingRepository).importFromFiles
+    .onComplete { _ =>
+      readingRepository.shuthdown
+      system.terminate()
+    }
 }
