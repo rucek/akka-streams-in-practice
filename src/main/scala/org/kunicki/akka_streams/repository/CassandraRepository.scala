@@ -7,7 +7,7 @@ import scala.concurrent.Future
 
 class ReadingRepository {
 
-  def save(reading: ValidReading): Future[ResultSet] = MyDatabase.readings.store(reading)
+  def save(reading: ValidReading): Future[Unit] = MyDatabase.readings.store(reading).map(_ => ())
 
   def shuthdown = {
     Manager.shutdown()
