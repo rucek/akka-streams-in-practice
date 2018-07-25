@@ -11,14 +11,15 @@ import com.typesafe.config.ConfigFactory
 import com.typesafe.scalalogging.LazyLogging
 import org.kunicki.akka_streams.model.ValidReading
 
-import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.util.Random
 
 object RandomDataGenerator extends App with LazyLogging {
 
   implicit val system = ActorSystem("random-data-generator")
   implicit val materializer = ActorMaterializer()
+  implicit val ec: ExecutionContextExecutor = system.dispatcher
 
   val config = ConfigFactory.load()
   val numberOfFiles = config.getInt("generator.number-of-files")
@@ -40,8 +41,7 @@ object RandomDataGenerator extends App with LazyLogging {
     }
     .runWith(Sink.ignore)
 
-  Source(1 to 100)
-
   Await.ready(f, Duration.Inf)
   logger.info("Generated random data")
+  f.onComplete(_ => system.terminate())
 }
